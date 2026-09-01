@@ -138,6 +138,18 @@ provider at $0 when the active host supplies that subscription (see
 pip install -r requirements.txt
 ```
 
+**Interpreter:** these scripts need Python **3.11+** (they use `tomllib`). Many systems —
+macOS in particular — still ship a much older `python3` on `PATH`, so the `python3 ...`
+commands throughout this document will fail with `ModuleNotFoundError: tomllib` or missing
+dependencies. Check with `python3 -VV`; if it is older than 3.11, create a virtualenv on a
+modern interpreter and activate it before running anything, so plain `python3` resolves to it:
+
+```bash
+python3.12 -m venv .venv        # or: uv venv --python 3.12 .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
 ## Architecture: the rounds
 
 ```
