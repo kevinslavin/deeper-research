@@ -5,8 +5,10 @@ corpus first, then writes only from what it fetched — so every claim traces to
 source that actually exists. Output is a fully-cited "Research Bible" (Markdown +
 HTML) plus a bibliography and a machine-readable claims file.
 
-Budget: **about $0.50–$0.60 of search per report**, hard-capped at $1 per run.
-The AI reasoning itself is $0 if you use your Claude Code subscription.
+Cost: **$0 for normal use.** Exa's free tier gives $20 of credit on signup plus
+$10 every month with no payment method required, and a report costs about
+$0.50–$0.60 — so roughly 17 reports a month, free. Runs are hard-capped at $1
+each. The AI reasoning is $0 too if you use your Claude Code subscription.
 
 Setup is about ten minutes. Claude can run all of it for you — just open this
 file in Claude Code and say "set this up for me."
@@ -56,11 +58,14 @@ Put these in `~/.env` (create it if missing; never commit it).
 EXA_API_KEY=...
 ```
 
-Get one at [exa.ai](https://exa.ai). This is non-optional: the pipeline refuses to
-write anything until it has fetched a real corpus, so with no Exa key it stops
-cold rather than guessing. That refusal is deliberate — it's what stops the tool
-inventing citations. **Ask Kevin whether Fairfield has a shared team key before
-buying your own.**
+Sign up at [dashboard.exa.ai/api-keys](https://dashboard.exa.ai/api-keys) — use
+your Fairfield Google account. **The free tier needs no payment method** and is
+enough for ~17 reports a month, so get your own key rather than sharing one; a
+shared key would pool everyone into a single monthly allowance for no benefit.
+
+This key is non-optional: the pipeline refuses to write anything until it has
+fetched a real corpus, so with no Exa key it stops cold rather than guessing.
+That refusal is deliberate — it's what stops the tool inventing citations.
 
 **Required — at least one non-Anthropic model.** Your Claude Code subscription
 covers the main writing at $0 and is detected automatically. But the pipeline runs
