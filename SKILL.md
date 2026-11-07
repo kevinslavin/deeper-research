@@ -389,7 +389,24 @@ genuinely cannot be dispatched (e.g. a constrained subprocess with no subagent
 capability). It enumerates expected-but-absent coverage with ONE model, pairs each gap
 with one scope-bounded Exa query, fires each as an ad-hoc gap slice, re-gates, and asks
 whether gaps remain — no checklist stage, no adversarial verification, so it can spend
-budget on a false gap. Use it only when the squad is unavailable:
+budget on a false gap.
+
+**HARD GATE — never silently downgrade to this fallback.** The persona squad is the
+default and MUST run on every run where subagents can be dispatched. Conserving
+context-window, token budget, wall-clock time, subagent count, or orchestrator
+convenience are **NOT** valid reasons to use the single-model fallback — the depth and
+the adversarial per-gap verification the squad adds are the whole point of Step 1.5, so
+trading them away silently defeats it (and if you can dispatch integration subagents in a
+later round, you can dispatch the squad here). The fallback is permitted in EXACTLY two
+cases: **(a)** subagent dispatch is genuinely impossible on this host (a constrained
+subprocess with no subagent capability), or **(b)** the user has given EXPLICIT permission
+for this run after being told the trade-off. In any other situation you MUST STOP and ask
+the user in one line before proceeding — e.g. *"Coverage audit: run the full persona squad
+(default; ~4 persona subagents + checklist + per-gap adversarial verify) or the
+single-model fallback (faster/cheaper, no adversarial gap-check)?"* — and wait for an
+answer. Disclosing the downgrade AFTER the fact (e.g. in a caveats list) is NOT a
+substitute for permission. When in doubt, run the squad. Use the fallback only under (a)
+or (b):
 
 ```bash
 python3 scripts/coverage_audit.py \
@@ -992,7 +1009,10 @@ When `$deeper-research [topic]` (Codex) or `/deeper-research [topic]` (Claude Co
    on this run dir — checklist + sibling sweep + persona panel + per-gap adversarial verify (you
    dispatch the selected adapter's isolated persona subagents inline, batching within
    available host slots), then fills via `slice_search.py --add-slice`, re-gate.
-   Writes the same `round1/coverage_gaps.md`. FALLBACK (no subagents available):
+   Writes the same `round1/coverage_gaps.md`. FALLBACK is permitted ONLY when subagent
+   dispatch is genuinely impossible OR the user has given explicit per-run permission after
+   hearing the trade-off — never as a silent budget/time/context economy (see the **HARD
+   GATE** under Step 1.5); otherwise STOP and ask first. FALLBACK:
    `coverage_audit.py --run-dir … --topic …`. Never run both.
    **Then repeat `fetch_fulltext.py --run-dir …`** — a SECOND full-text pass so the
    gap-slice sources the audit just added are pulled to full text too, not left as
@@ -1021,14 +1041,64 @@ When `$deeper-research [topic]` (Codex) or `/deeper-research [topic]` (Claude Co
 | Runaway retrieval spend | Per-run ledger + `--max-retrieval-usd`; exit 21 surfaces, never retries |
 | Silent bucket loss in deepening | Round 2 MUST emit the six EXACT headers (a typo empties a bucket) |
 | Fabricated / unresolvable citations | `verify_citations.py` resolves every cite against OpenAlex/Crossref |
+| Reified recommendation as a source fact | A claim that a document "says / records / uses / contemplates" X must resolve to real words in the named source; if it does not, it is analysis — write "this analysis recommends/proposes" (see **Source fidelity**) |
+| Invented pinpoint citations (§X.Y) | Never cite a section/clause/item number you have not read at that locus in the named source; own-outline numbering is scaffolding, not a citation (see **Source fidelity**) |
+| Manufactured document "contradiction" | When sources conflict, the operative + most-recent instrument controls; superseded drafts and internal models are history, not a contradiction to reconcile |
 | Dead or spoofed links | Three-state SSRF-hardened probe → `## ⚠ Unresolved links` |
 | Echo-chamber review | Adversary forced through the independent-family rule; OpenAI ↔ xAI is excluded |
+| Silent coverage downgrade | Step 1.5 **HARD GATE**: never use the single-model fallback to save budget/time/context; permitted only when subagents can't be dispatched OR the user gave explicit per-run permission — otherwise STOP and ask |
 | Bibliography skewed to blogs/wikis | `classify_sources.py` quality score |
 | Major canonical works missing | `lit_search.py --compare-bib` |
 | OpenAlex quota/network failure | Automatic tested Semantic Scholar fallback; if both fail, explicit degraded status and a visible final-report limitation |
 | Partial retrieval failure | `slice_search.py --resume` skips slices whose jsonl parses |
 | WebFetch hallucination | No-WebFetch rule — curl the raw page, grep/read the real text |
 | Silent stall in a network script | `CappedRetry` bounds Retry-After sleeps (30s); wrap long runs in `scripts/watched.py` (kills on stale output, exit 99) |
+
+## Source fidelity — no reification, no invented pinpoints
+
+`verify_citations.py` checks *external* bibliography cites; it does NOT police claims
+about the user's own briefing, contracts, or any grounding document. Those are the
+easiest place to fabricate and the most damaging when the report drives a real
+decision. Three rules bind every synthesis, integration, and section subagent, and the
+orchestrator when it writes the Bible:
+
+1. **Keep three registers separate; never let one wear another's clothes.**
+   (a) what a *named, operative* source states; (b) what a *non-authoritative* artifact
+   (an internal model, a superseded draft) states; (c) what THIS analysis *recommends*.
+   A recommendation written as "the LOI uses gross" is the single most dangerous error a
+   reference document can make. Whenever you assert what a document "says / records /
+   uses / contemplates," confirm those words are in that document — otherwise write "this
+   analysis recommends / proposes."
+
+2. **A pinpoint must resolve to a real provision.** Never invent a section, clause, or
+   item number (e.g. "§6.2") for a source you have not read at that locus. Cite the real
+   heading/number from the actual document, or describe the place in prose ("the
+   briefing's open-questions list"). Your own outline's numbering is scaffolding, not a
+   citation — never present it as one.
+
+3. **When documents conflict, resolve by operative status + recency, and say so.** A
+   superseded template, an internal working model, and the executed instrument are not "a
+   contradiction to reconcile" — the operative, most-recent document controls and the
+   others are history. State which document is operative and what it actually says
+   (including "deliberately silent") rather than manufacturing a conflict between two
+   non-operative versions.
+
+4. **Reasoning rounds must not introduce specifics absent from the corpus.** Synthesis,
+   deepening (Round 2.5), and integration reason *over retrieved text* — they do not add
+   knowledge. A statistic, date, quantity, or quotation that is not in a retrieved source
+   does not become citable by attaching a plausible-sounding source name (e.g. an "FAO
+   Co-Chairs background document" that was never fetched). The danger is highest when the
+   invented specifics decorate a *correct* qualitative point: the conclusion feels safe, so
+   fabricated numbers ride in behind it. If the corpus supports only the qualitative claim,
+   state only the qualitative claim.
+
+If a grounding brief is built from the user's documents, carry each fact with its source
+and status into synthesis; a fact whose source you cannot name does not enter the Bible.
+Before export, spot-check that every "the &lt;document&gt; says/records §X" assertion — and
+every hard number with a citation — resolves to a real locus in a retrieved source. The
+mechanical verifier only resolves external bibliography cites; it will not catch a figure
+attributed to a client document, to "this run's deepening analysis," or to an un-retrieved
+"background document."
 
 ## Stall watchdog
 
