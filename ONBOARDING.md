@@ -81,10 +81,23 @@ XAI_API_KEY=...        # Grok
 or install the Codex CLI (`brew install codex` + `codex login`) if you have a
 ChatGPT Plus subscription — that route is $0.
 
+**Recommended — OpenAlex (academic lookups):**
+
+```
+OPENALEX_KEY=...
+```
+
+OpenAlex now meters every request, and keyless use gets only a tiny daily
+allowance, so the academic anchor and citation checks can 429 partway through a
+run. A free key gives $1/day (resets at midnight UTC), which is plenty. Sign up at
+[openalex.org/signup](https://openalex.org/signup), click the emailed activation
+link, then copy the key from
+[openalex.org/settings/api-key](https://openalex.org/settings/api-key).
+
 **Optional:**
 
 ```
-SEMANTIC_SCHOLAR_KEY=...   # higher rate limits on the free academic lookup
+SEMANTIC_SCHOLAR_KEY=...   # higher rate limits on the backup academic lookup
 CONTACT_EMAIL=...          # faster, politer access to OpenAlex/Crossref
 ```
 
