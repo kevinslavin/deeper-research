@@ -347,7 +347,13 @@ SEMANTIC_SCHOLAR = "https://api.semanticscholar.org/graph/v1"
 SS_KEY = os.environ.get("SEMANTIC_SCHOLAR_KEY")  # optional; raises the shared free-tier rate
 OA_KEY = os.environ.get("OPENALEX_KEY")  # OpenAlex premium key; metered credit pool
 
-_S2_MIN_INTERVAL = 1.5  # seconds; S2 limit is 1 req/s CUMULATIVE across all endpoints (margin over 1.0s for their bursty fixed-window enforcement; CappedRetry absorbs stragglers)
+_S2_SKIP = bool(os.environ.get("DR_VERIFY_SKIP_S2"))  # skip the Semantic Scholar fallback entirely (for heavily non-academic / non-DOI corpora where S2 has few matches and its serialized 1-req/s gate dominates wall-clock)
+_S2_MIN_INTERVAL = float(os.environ.get(
+    "DR_VERIFY_S2_INTERVAL",
+    # A Semantic Scholar API key gives the caller its own ~1 req/s budget, so the
+    # serialized gate can sit just above 1s instead of the 1.5s shared-pool margin.
+    "1.05" if os.environ.get("SEMANTIC_SCHOLAR_KEY") else "1.5",
+))  # seconds; S2 limit ~1 req/s CUMULATIVE; the gate is held across the sleep, so on a non-DOI corpus most entries fall through to S2 and this serialization dominates wall-clock — set DR_VERIFY_SKIP_S2=1 to skip S2 on such corpora.
 _s2_lock = threading.Lock()
 _s2_last_request = 0.0
 
@@ -429,7 +435,13 @@ def session():
     retry = CappedRetry(
         total=4,
         backoff_factor=0.8,
-        status_forcelist=[429, 500, 502, 503, 504],
+        # 429 is deliberately NOT retried here: resolution cascades across three
+        # providers, so a rate-limited resolver should FAIL FAST to the next one
+        # rather than burn CappedRetry backoff sleeps on a single provider. When
+        # OpenAlex hard-429s every request (a recurring outage mode), retrying it
+        # 4x per entry x hundreds of entries is what silently stalls the whole
+        # pass; failing fast to Crossref/Semantic Scholar keeps it moving.
+        status_forcelist=[500, 502, 503, 504],
         allowed_methods=frozenset(["GET", "HEAD"]),
         respect_retry_after_header=True,
     )
@@ -594,6 +606,21 @@ def title_match(entry: str, resolved_title: str) -> float:
 
 
 def resolve_entry(s, entry: str):
+    # Crossref FIRST: it is the fast, reliable resolver (no key needed beyond the
+    # polite-pool mailto). OpenAlex is tried second because it has a recurring
+    # hard-429 outage mode; with 429 no longer retried (see session()), an OpenAlex
+    # outage now costs one fast rejection per entry instead of a backoff storm.
+    cr = resolve_crossref(s, entry)
+    if cr:
+        title = (cr.get("title") or [""])[0]
+        match = title_match(entry, title)
+        return {
+            "source": "crossref",
+            "title": title,
+            "doi": cr.get("DOI"),
+            "year": (cr.get("issued", {}).get("date-parts") or [[None]])[0][0],
+            "title_match": round(match, 2),
+        }
     oa = resolve_openalex(s, entry)
     if oa:
         title = (oa.get("title") or "").strip()
@@ -607,17 +634,8 @@ def resolve_entry(s, entry: str):
             "year": oa.get("publication_year"),
             "title_match": round(match, 2),
         }
-    cr = resolve_crossref(s, entry)
-    if cr:
-        title = (cr.get("title") or [""])[0]
-        match = title_match(entry, title)
-        return {
-            "source": "crossref",
-            "title": title,
-            "doi": cr.get("DOI"),
-            "year": (cr.get("issued", {}).get("date-parts") or [[None]])[0][0],
-            "title_match": round(match, 2),
-        }
+    if _S2_SKIP:
+        return None  # DR_VERIFY_SKIP_S2: treat an OpenAlex+Crossref miss as unresolved (non-indexed) rather than funnelling non-academic sources through S2's serialized gate
     ss = resolve_semantic_scholar(s, entry)
     if ss:
         title = (ss.get("title") or "").strip()
