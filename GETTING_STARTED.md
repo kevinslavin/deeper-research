@@ -21,7 +21,8 @@ The result is a fully cited reference document, which the skill calls a "Researc
 | **Claude Code** | Runs the skill | Your Claude subscription covers the writing |
 | **Python 3.11 or newer** | Runs the helper scripts | Free |
 | **An Exa API key** | Does the web search | Free tier: about 17 reports a month, no card needed |
-| **One non-Claude AI key** (Gemini, Grok, or OpenAI via a ChatGPT login) | The "pick it apart" check has to use a different AI than the one that wrote the draft | Free tiers or existing subscriptions usually cover it |
+| **One non-Claude AI** (Gemini, Grok, or ChatGPT) | The "pick it apart" check has to use a different AI than the one that wrote the draft | Gemini has a free tier; the others need prepaid credit or a ChatGPT subscription (see step 4) |
+| **An OpenAlex key** (recommended) | Looks up and checks academic papers | Free |
 
 Each report costs roughly $0.50–$0.60 in search credit and is capped at **$1 per run**, so it can't run up a surprise bill.
 
@@ -91,17 +92,70 @@ EXA_API_KEY=...
 ```
 Get one at [dashboard.exa.ai/api-keys](https://dashboard.exa.ai/api-keys). The free tier doesn't need a credit card. Without this key the tool **refuses to run** instead of making things up. That's intentional.
 
-**Required: at least one non-Claude model,** for the independent review. Pick one:
+**Required: one non-Claude AI, the "reviewer."** Claude writes the report. Before you see it, a second AI from a *different company* tries to find what's wrong with it. A Claude model reviewing Claude's own work would share its blind spots, so the skill won't let it. You only need **one** of the options below. If you set up more than one, the skill tries Grok first, then ChatGPT, then Gemini.
+
+<details open>
+<summary><b>Option A: Gemini (Google). Easiest, and has a free tier.</b></summary>
+
+1. Go to [aistudio.google.com/apikey](https://aistudio.google.com/apikey) and sign in with any Google account.
+2. Accept the terms if asked. Google usually creates a project and a key for you; if not, click **Create API key**.
+3. Copy the key (it starts with `AIza`) into `~/.env`:
+   ```
+   GOOGLE_API_KEY=AIza...
+   ```
+
+New accounts start on the free tier, which doesn't require linking billing. If you start getting rate-limit or quota errors, the free tier isn't enough for your use. Add billing on the AI Studio **Billing** page; the paid tier needs a $5 minimum prepayment.
+</details>
+
+<details>
+<summary><b>Option B: Grok (xAI). Needs prepaid credit.</b></summary>
+
+1. Go to [console.x.ai](https://console.x.ai) and create an account. This is separate from an X/Twitter account, though you can sign in with one.
+2. Under **Billing**, add a payment method and buy some credit. A few dollars goes a long way, because each report makes only one review call. New accounts sometimes come with promotional credit, so check your balance first.
+3. Go to **API Keys**, then **Create API Key**, and copy it into `~/.env`:
+   ```
+   XAI_API_KEY=xai-...
+   ```
+</details>
+
+<details>
+<summary><b>Option C: ChatGPT (OpenAI). Two ways.</b></summary>
+
+**If you already pay for ChatGPT Plus or Pro**, you can use your subscription and won't need an API key:
+
+```bash
+brew install codex      # OpenAI's command-line tool (needs Homebrew)
+codex login             # opens a browser; sign in with your ChatGPT account
 ```
-GOOGLE_API_KEY=...     # Gemini: aistudio.google.com/apikey
-XAI_API_KEY=...        # Grok:   console.x.ai
-```
-Or, if you have ChatGPT Plus, install the Codex CLI instead (`brew install codex`, then `codex login`). That route costs nothing extra.
+
+Then keep the `[providers.codex-sub]` section when you edit the config in step 5.
+
+**Otherwise, use a pay-as-you-go API key.** Note that this is billed separately from any ChatGPT subscription:
+
+1. Go to [platform.openai.com](https://platform.openai.com) and sign in or create an account.
+2. Under **Settings → Billing**, add a payment method and buy credit. A small amount is plenty.
+3. Go to [platform.openai.com/api-keys](https://platform.openai.com/api-keys), then **Create new secret key**, and copy it into `~/.env`:
+   ```
+   OPENAI_API_KEY=sk-...
+   ```
+
+This key also unlocks an optional extra, searching across all your past reports by meaning. See "Searching what you've researched" in the README.
+</details>
+
+**Recommended: OpenAlex, for the academic paper lookups.** OpenAlex is a free database of scholarly papers. It used to work without a key, but it now gives keyless users only a tiny daily allowance. Without a key, the paper lookups and citation checks can run out partway through a report.
+
+1. Sign up at [openalex.org/signup](https://openalex.org/signup). It takes about 30 seconds, and you'll need to click the activation link they email you.
+2. Copy your key from [openalex.org/settings/api-key](https://openalex.org/settings/api-key) into `~/.env`:
+   ```
+   OPENALEX_KEY=...
+   ```
+
+The free key gives you $1 of usage a day, which resets at midnight UTC. That's plenty, because most lookups cost a fraction of a cent.
 
 **Optional:**
 ```
-SEMANTIC_SCHOLAR_KEY=...   # higher limits on academic paper lookups
-CONTACT_EMAIL=...          # gets faster access to OpenAlex/Crossref
+SEMANTIC_SCHOLAR_KEY=...   # higher limits on the backup academic database (semanticscholar.org/product/api)
+CONTACT_EMAIL=...          # your email; gets you faster, "polite" access to OpenAlex/Crossref
 ```
 
 Never commit or share your `.env` file. It holds your keys.
@@ -113,7 +167,14 @@ mkdir -p ~/.config/deeper-research
 cp ~/Projects/deeper-research/config.toml.example ~/.config/deeper-research/config.toml
 ```
 
-Open that file and **remove or comment out any provider you don't have a key for**. The skill quietly skips a provider with a missing key, but if a provider you've listed explicitly can't be reached, it stops with an error.
+Open that file. It's an *example* that lists several optional extra providers. **Delete or comment out (put `#` in front of) every `[providers.…]` section you aren't using.** Most people should remove all of these:
+
+- `[providers.deepseek]`, `[providers.kimi]` and `[providers.glm]`. These hold placeholder keys like `sk-xxxx` that will fail if left in.
+- `[providers.codex-sub]`, *unless* you chose Option C with the ChatGPT subscription.
+
+You can leave `[providers.claude-sub]` alone. Gemini, Grok and OpenAI don't need entries here, because they're picked up automatically from the keys in `~/.env`.
+
+The skill quietly skips a built-in provider whose key is missing. But if a provider you've named explicitly can't be reached, it stops with an error, so don't leave in anything you don't have.
 
 ## Your first run
 
@@ -141,7 +202,10 @@ Open that file in your browser.
 | Run stops with **exit code 22** | Not enough good sources were found, so it refused to guess | Broaden or rephrase the question and try again |
 | Run stops with **exit code 21** | The $1 per-run spending cap was hit | That's the safety limit doing its job. Narrow the question |
 | Skill doesn't show up in Claude Code | The shortcut is missing or Claude Code wasn't restarted | Re-run step 3 and restart Claude Code |
-| Complaint about a missing provider or adversary | No non-Claude model is set up | Add a Gemini or Grok key, or the Codex CLI (step 4), and check the config (step 5) |
+| Complaint about a missing provider or adversary | No non-Claude reviewer is set up | Add one reviewer option from step 4, then check the config (step 5) |
+| `429 Too Many Requests` from OpenAlex, or academic lookups failing | Daily OpenAlex allowance used up | Add a free `OPENALEX_KEY` (step 4), or wait until midnight UTC |
+| Gemini quota / `RESOURCE_EXHAUSTED` errors | Hit the Gemini free tier's limits | Turn on billing in AI Studio, or switch to another reviewer |
+| `402` or "insufficient credit" from Grok/OpenAI/Gemini | Prepaid balance ran out | Top up credit in that provider's console |
 
 ## Staying up to date
 
